@@ -45,11 +45,9 @@ export default function AddExpenseScreen() {
     }
 
     try {
-      // Criando uma referência para a subcoleção 'transactions' do usuário logado
       
       const transactionsCollectionRef = collection(db, 'users', user.uid, 'transactions');
 
-      // Adiciona um novo documento (transação) à subcoleção
       await addDoc(transactionsCollectionRef, {
         description: values.description,
         amount: values.amount,

@@ -1,15 +1,11 @@
-// src/navigation/AuthStack.js
-
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-
-// Telas de login e cadastro
 import LoginScreen from '../Screens/LoginScreen';
 import RegisterScreen from '../Screens/RegisterScreen';
 
 const Stack = createNativeStackNavigator();
 
-// Stack que agrupa as telas públicas, exibidas apenas quando o usuário NÃO está autenticado
+// Stack para exibir telas de login e cadastro apenas quando o usuário não estiver autenticado
 export default function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

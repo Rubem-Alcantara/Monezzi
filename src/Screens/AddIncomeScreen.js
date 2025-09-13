@@ -40,15 +40,13 @@ export default function AddIncomeScreen() {
 
     try {
       // Criando uma referência para a subcoleção 'transactions' do usuário logado
-      // A subcoleção será criada dentro do documento do usuário na coleção 'users'
-      // O caminho será: users/{uid_do_usuario}/transactions
       const transactionsCollectionRef = collection(db, 'users', user.uid, 'transactions');
 
       // Adiciona um novo documento (transação) à subcoleção
       await addDoc(transactionsCollectionRef, {
         description: values.description,
         amount: values.amount,
-        type: 'income', // Definindo o tipo como 'income' (receita)
+        type: 'income',
         category: values.category,
         date: serverTimestamp(), // Usando data e hora do servidor para deinir data exata da transação
         userId: user.uid, 

@@ -1,17 +1,15 @@
-// src/screens/HomeScreen.js
-
 import React, { useState, useEffect } from 'react';
 import { PieChart } from 'react-native-chart-kit';
-import { Dimensions, StyleSheet, Text, View, Image, TouchableOpacity, ActivityIndicator, Alert, FlatList } from 'react-native';
+import { Dimensions, StyleSheet, Text, View, Image, TouchableOpacity, ActivityIndicator, Alert, FlatList, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import Entypo from '@expo/vector-icons/Entypo';
 import { useFonts, Montserrat_400Regular, Montserrat_700Bold } from '@expo-google-fonts/montserrat';
-import { useNavigation } from '@react-navigation/native';
-
+import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
 import { auth, db } from '../config/firebase';
-import { collection, query, where, orderBy, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, getDocs, getDoc, deleteDoc } from 'firebase/firestore'; 
 import { MaterialIcons } from '@expo/vector-icons';
+
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -19,77 +17,137 @@ export default function Home() {
   const navigation = useNavigation();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingBalance, setLoadingBalance] = useState(true); 
   const [balance, setBalance] = useState(0);
   const [userData, setUserData] = useState(null);
   const [chartData, setChartData] = useState([]);
+
+  
+  const [filterType, setFilterType] = useState(null); 
+  const [filterCategory, setFilterCategory] = useState(null); 
+  const [availableCategories, setAvailableCategories] = useState(['Todas']);
 
   let [fontsLoaded] = useFonts({
     Montserrat_400Regular,
     Montserrat_700Bold,
   });
 
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      const user = auth.currentUser;
+      let isActive = true; 
+
+      const fetchInitialData = async () => {
+        if (!user) {
+          if (isActive) {
+            setUserData(null);
+            setBalance(0);
+            setLoadingBalance(false);
+          }
+          return;
+        }
+
+        if (isActive) setLoadingBalance(true);
+
+        const userDocRef = doc(db, 'users', user.uid);
+        try {
+          const docSnapshot = await getDoc(userDocRef); 
+          if (isActive && docSnapshot.exists()) {
+            setUserData(docSnapshot.data());
+          } else if (isActive) {
+            setUserData({ name: user.displayName, photoURL: user.photoURL }); 
+          }
+        } catch (error) {
+          console.error("Erro ao buscar dados do usuário:", error);
+          if (isActive) setUserData({ name: user.displayName, photoURL: user.photoURL });
+        }
+        
+        const transactionsCollectionRef = collection(db, 'users', user.uid, 'transactions');
+        const allTransactionsQuery = query(transactionsCollectionRef);
+        try {
+          const querySnapshot = await getDocs(allTransactionsQuery);
+          let totalBalance = 0;
+          const categoriesSet = new Set(); 
+          querySnapshot.forEach((docItem) => {
+            const data = docItem.data();
+            const amountAsNumber = parseFloat(data.amount);
+            if (!isNaN(amountAsNumber)) {
+              if (data.type === 'income') {
+                totalBalance += amountAsNumber;
+              } else if (data.type === 'expense') {
+                totalBalance -= amountAsNumber;
+              }
+              if (data.category) {
+                categoriesSet.add(data.category);
+              }
+            }
+          });
+          if (isActive) {
+            setBalance(totalBalance);
+            setAvailableCategories(['Todas', ...Array.from(categoriesSet)]);
+          }
+        } catch (error) {
+          console.error("Erro ao calcular saldo total:", error);
+          if (isActive) setBalance(0);
+        }
+        if (isActive) setLoadingBalance(false);
+      };
+
+      fetchInitialData();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  ); 
+
   useEffect(() => {
     const user = auth.currentUser;
-
     if (!user) {
-      console.log('Nenhum usuário logado na HomeScreen.');
       setTransactions([]);
-      setBalance(0);
-      setUserData(null);
-      setChartData([]); 
+      setChartData([]);
       setLoading(false);
       return;
     }
 
-    const usersCollectionRef = collection(db, 'users');
-    const userDocRef = doc(usersCollectionRef, user.uid);
-
-    const unsubscribeUser = onSnapshot(userDocRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        setUserData(docSnapshot.data());
-      } else {
-        console.log("Dados do usuário não encontrados no Firestore!");
-        setUserData(null);
-      }
-    }, (error) => {
-      console.error("Erro ao carregar dados do usuário:", error);
-    });
-
+    setLoading(true);
     const transactionsCollectionRef = collection(db, 'users', user.uid, 'transactions');
-    const q = query(transactionsCollectionRef, orderBy('date', 'desc'));
+    const queryConstraints = [orderBy('date', 'desc')];
+
+    if (filterType) {
+      queryConstraints.push(where('type', '==', filterType));
+    }
+    if (filterCategory && filterCategory !== 'Todas') {
+      queryConstraints.push(where('category', '==', filterCategory));
+    }
+
+    const q = query(transactionsCollectionRef, ...queryConstraints);
 
     const unsubscribeTransactions = onSnapshot(q, (snapshot) => {
       const fetchedTransactions = [];
-      let currentBalance = 0;
       const categoriesSummary = {};
 
       snapshot.forEach((docItem) => {
         const data = docItem.data();
         const amountAsNumber = parseFloat(data.amount);
 
-        if (isNaN(amountAsNumber)) {
-          console.warn(`Transação com valor inválido ignorada: ${data.amount}`);
-          return;
-        }
+        if (isNaN(amountAsNumber)) return;
 
         fetchedTransactions.push({
           id: docItem.id,
           ...data,
           amount: amountAsNumber,
-          date: data.date && data.date.toDate ? data.date.toDate() : new Date(), // Garantindo que a data seja um objeto Date
+          date: data.date && data.date.toDate ? data.date.toDate() : new Date(),
         });
 
-        if (data.type === 'income') {
-          currentBalance += amountAsNumber;
-        } else if (data.type === 'expense') {
-          currentBalance -= amountAsNumber;
+        if (data.type === 'expense') {
           const categoryName = data.category || 'Outros';
           categoriesSummary[categoryName] = (categoriesSummary[categoryName] || 0) + amountAsNumber;
         }
       });
 
       setTransactions(fetchedTransactions);
-      setBalance(currentBalance);
 
       const chartColors = ['#A9BA9D', '#3B5323', '#6B8E23', '#8FBC8F', '#556B2F', '#CD853F', '#D2B48C', '#90EE90'];
       const newChartData = Object.keys(categoriesSummary).map((category, index) => ({
@@ -100,22 +158,51 @@ export default function Home() {
         legendFontSize: 14,
       }));
       setChartData(newChartData);
-
       setLoading(false);
     }, (error) => {
-      console.error('Erro ao buscar transações:', error);
+      console.error('Erro ao buscar transações filtradas:', error);
       setLoading(false);
       Alert.alert('Erro', 'Não foi possível carregar as transações.');
     });
 
-    return () => {
-      unsubscribeUser();
-      unsubscribeTransactions();
-    };
-  }, []); 
+    return () => unsubscribeTransactions();
+  }, [auth.currentUser, filterType, filterCategory]);
+
+   const handleDeleteTransaction = (transactionId, description) => {
+    Alert.alert(
+      "Confirmar Exclusão",
+      `Tem certeza que deseja excluir a transação "${description}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Excluir",
+          onPress: async () => {
+            const user = auth.currentUser;
+            if (!user) {
+              Alert.alert("Erro", "Usuário não autenticado.");
+              return;
+            }
+            try {
+              const transactionDocRef = doc(db, 'users', user.uid, 'transactions', transactionId);
+              await deleteDoc(transactionDocRef);
+              console.log('Transação excluída com sucesso!');
+            } catch (error) {
+              console.error("Erro ao excluir transação:", error);
+              Alert.alert("Erro", "Não foi possível excluir a transação.");
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
 
   const renderTransactionItem = ({ item }) => (
-    <View style={styles.transactionItem}>
+    <TouchableOpacity 
+      style={styles.transactionItem} 
+      onPress={() => navigation.navigate('EditTransaction', { transaction: item })} 
+                                                                                  
+    >
       <View style={styles.transactionLeft}>
         <Text style={styles.transactionDescription} numberOfLines={1} ellipsizeMode="tail">{item.description}</Text>
         <Text style={styles.transactionCategory}>{item.category || 'Sem categoria'}</Text>
@@ -125,12 +212,20 @@ export default function Home() {
         styles.transactionAmount,
         item.type === 'income' ? styles.incomeAmount : styles.expenseAmount
       ]}>
-        {item.type === 'expense' ? '- ' : '+ '}R$ {item.amount !== undefined && !isNaN(Number(item.amount)) ? Number(item.amount).toFixed(2) : '0.00'}
+        {item.type === 'expense' ? '- ' : '+ '}R$ {item.amount !== undefined && !isNaN(Number(item.amount)) ? Number(item.amount).toFixed(2).replace('.', ',') : '0,00'}
       </Text>
-    </View>
+  
+      <TouchableOpacity 
+        onPress={() => handleDeleteTransaction(item.id, item.description)}
+        style={styles.deleteTransactionButton}
+      >
+        <MaterialIcons name="delete" size={20} color="#dc3545" />
+      </TouchableOpacity>
+    </TouchableOpacity> 
   );
+  
 
-  if (!fontsLoaded || loading) {
+  if (!fontsLoaded || loadingBalance) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3B5323" />
@@ -150,21 +245,18 @@ export default function Home() {
           >
             <Entypo name="menu" size={28} color="white" />
           </TouchableOpacity>
-
           <Image
             style={styles.imgProfile}
-            source={userData && userData.photoURL ? { uri: userData.photoURL } : { uri: 'https://avatars.githubusercontent.com/u/1024101?v=4' }} // Placeholder
+            source={userData && userData.photoURL ? { uri: userData.photoURL } : require('../assets/default-avatar.png')} 
           />
         </View>
         <Text style={styles.txtWelcome}>Bem vindo(a), {'\n'}{userData ? userData.name : 'Usuário'}!</Text>
       </LinearGradient>
 
       <View style={styles.resumoSaldo}>
-        <Text style={styles.saldoLabel}>
-          Seu saldo total
-        </Text>
+        <Text style={styles.saldoLabel}>Seu saldo total</Text>
         <Text style={styles.saldoValor}>
-          R$ {balance !== undefined && !isNaN(balance) ? balance.toFixed(2).replace('.',',') : '0,00'}
+          R$ {balance !== undefined && !isNaN(balance) ? balance.toFixed(2).replace('.', ',') : '0,00'}
         </Text>
       </View>
 
@@ -172,18 +264,11 @@ export default function Home() {
         <LinearGradient colors={['#3B5323', '#A9BA9D']} style={styles.EntryGradient}>
           <Text style={styles.entryTitle}>O que deseja fazer?</Text>
           <View style={styles.entryButtonsContainer}>
-            <TouchableOpacity
-              style={styles.entryButton} // Usando entryButton para Receita
-              onPress={() => navigation.navigate('AddIncome')}
-            >
+            <TouchableOpacity style={styles.entryButton} onPress={() => navigation.navigate('AddIncome')}>
               <MaterialIcons name="add" size={20} color="white" />
               <Text style={styles.actionButtonText}>Receita</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton} // Usando actionButton (similar, mas pode ter cor diferente) para Despesa
-              onPress={() => navigation.navigate('AddExpense')}
-            >
+            <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('AddExpense')}>
               <MaterialIcons name="remove" size={20} color="white" />
               <Text style={styles.actionButtonText}>Despesa</Text>
             </TouchableOpacity>
@@ -192,39 +277,78 @@ export default function Home() {
       </View>
 
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>
-          Gastos por categoria
-        </Text>
-        {chartData.length > 0 ? (
+        <Text style={styles.chartTitle}>Gastos por categoria</Text>
+        {loading ? <ActivityIndicator color="#3B5323" /> : chartData.length > 0 ? (
           <PieChart
             data={chartData}
-            width={screenWidth * 0.9} 
-            height={180} 
-            chartConfig={{
-              color: (opacity = 1) => `rgba(59, 83, 35, ${opacity})`, 
-              labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`, 
-            }}
+            width={screenWidth * 0.9}
+            height={180}
+            chartConfig={{ color: (opacity = 1) => `rgba(59, 83, 35, ${opacity})` }}
             accessor="population"
             backgroundColor="transparent"
-            paddingLeft="15" 
-            absolute 
-            hasLegend={true} 
+            paddingLeft="15"
+            absolute
+            hasLegend={true}
           />
         ) : (
-          <Text style={styles.noChartDataText}>Nenhum gasto registrado para o gráfico.</Text>
+          <Text style={styles.noChartDataText}>Nenhum gasto para exibir no gráfico com os filtros atuais.</Text>
         )}
       </View>
 
+      <View style={styles.filtersOuterContainer}>
+        <View style={styles.filtersContainer}>
+          <Text style={styles.filterSectionTitle}>Filtrar Transações</Text>
+          <Text style={styles.filterLabel}>Por Tipo:</Text>
+          <View style={styles.filterOptions}>
+            <TouchableOpacity
+              style={[styles.filterButton, !filterType && styles.filterButtonActive]}
+              onPress={() => setFilterType(null)}>
+              <Text style={[styles.filterButtonTextBase, !filterType ? styles.filterButtonTextActive : styles.filterButtonTextInactive]}>Todos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filterType === 'income' && styles.filterButtonActive]}
+              onPress={() => setFilterType('income')}>
+              <Text style={[styles.filterButtonTextBase, filterType === 'income' ? styles.filterButtonTextActive : styles.filterButtonTextInactive]}>Receitas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filterType === 'expense' && styles.filterButtonActive]}
+              onPress={() => setFilterType('expense')}>
+              <Text style={[styles.filterButtonTextBase, filterType === 'expense' ? styles.filterButtonTextActive : styles.filterButtonTextInactive]}>Despesas</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.filterLabel}>Por Categoria:</Text>
+          <View style={styles.filterOptions}>
+            {availableCategories.map(category => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.filterButton,
+                  (filterCategory === category || (!filterCategory && category === 'Todas')) && styles.filterButtonActive
+                ]}
+                onPress={() => setFilterCategory(category === 'Todas' ? null : category)}>
+                <Text style={[
+                    styles.filterButtonTextBase,
+                    (filterCategory === category || (!filterCategory && category === 'Todas')) ? styles.filterButtonTextActive : styles.filterButtonTextInactive
+                ]}>{category}</Text>
+              </TouchableOpacity>
+            ))}
+              {availableCategories.length <= 1 && <Text style={styles.noCategoriesText}>Nenhuma categoria encontrada.</Text>}
+          </View>
+        </View>
+      </View>
+
       <Text style={styles.transactionsTitle}>Histórico de Transações</Text>
-      {transactions.length === 0 && !loading && (
-        <Text style={styles.noTransactionsText}>Nenhuma transação registrada ainda.</Text>
+      {loading && transactions.length === 0 && <ActivityIndicator style={{marginTop: 20}} color="#3B5323" />}
+      {!loading && transactions.length === 0 && (
+        <Text style={styles.noTransactionsText}>Nenhuma transação encontrada com os filtros atuais.</Text>
       )}
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" backgroundColor="#3B5323" /> 
+      <StatusBar style="light" backgroundColor="#3B5323" />
       <FlatList
         data={transactions}
         renderItem={renderTransactionItem}
@@ -232,7 +356,7 @@ export default function Home() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={ListHeader}
         contentContainerStyle={styles.flatListContentContainer}
-        ListFooterComponent={<View style={{ height: 100 }} />} 
+        ListFooterComponent={<View style={{ height: 100 }} />}
         initialNumToRender={10}
         maxToRenderPerBatch={5}
         windowSize={21}
@@ -252,26 +376,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f7f7f7',
   },
-  loadingText: { 
+  loadingText: {
     marginTop: 10,
     color: '#3B5323',
     fontFamily: 'Montserrat_400Regular',
   },
   listHeaderContent: {
     alignItems: 'center',
-    paddingBottom: 20, 
-    width: '100%', 
+    width: '100%',
   },
-  flatListContentContainer: { 
-    paddingBottom: 40, 
+  flatListContentContainer: {
+    paddingBottom: 40,
   },
   headerGradient: {
-    width: '100%', 
-  
-    minHeight: 200, 
+    width: '100%',
+    minHeight: 200,
     paddingHorizontal: 20,
-    paddingTop: 20, 
-    paddingBottom: 20, 
+    paddingTop: Platform.OS === 'android' ? 30 : 40, 
+    paddingBottom: 20,
     borderBottomLeftRadius: 70,
     borderBottomRightRadius: 70,
   },
@@ -280,45 +402,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
-    marginTop: 20, 
+    marginTop: 10, 
   },
   menuButton: {
     padding: 8,
-    
   },
   imgProfile: {
     width: 50,
     height: 50,
-    borderRadius: 25, 
-    borderWidth: 1, 
-    borderColor: 'white', 
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: 'white',
   },
   txtWelcome: {
     color: 'white',
     fontSize: 20,
-    marginLeft: '10%', 
-    fontFamily: 'Montserrat_700Bold', 
-    marginTop: 10, 
+    marginLeft: '10%',
+    fontFamily: 'Montserrat_700Bold',
+    marginTop: 10,
   },
   resumoSaldo: {
     width: '80%',
     backgroundColor: 'white',
     borderRadius: 20,
-    padding: 20,
-    marginTop: -25, 
+    paddingVertical: 20, 
+    paddingHorizontal: 20,
+    marginTop: -20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    alignItems: 'center', 
+    alignItems: 'center',
   },
-  saldoLabel: { 
+  saldoLabel: {
     color: '#3B5323',
     fontSize: 18,
     fontFamily: 'Montserrat_400Regular',
   },
-  saldoValor: { 
+  saldoValor: {
     color: '#3B5323',
     fontSize: 30,
     fontFamily: 'Montserrat_700Bold',
@@ -328,8 +450,8 @@ const styles = StyleSheet.create({
     width: '80%',
     marginTop: 30,
     borderRadius: 20,
-    overflow: 'hidden', 
-    shadowColor: '#000', 
+    overflow: 'hidden',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
@@ -337,44 +459,43 @@ const styles = StyleSheet.create({
   },
   EntryGradient: {
     width: '100%',
-    //height: '100%',
-    borderRadius: 20, 
-    paddingHorizontal: 15, 
+    borderRadius: 20,
+    paddingHorizontal: 15,
     paddingVertical: 15,
     justifyContent: 'center',
-    alignItems: 'center', 
+    alignItems: 'center',
   },
   entryTitle: {
     color: 'white',
     fontFamily: 'Montserrat_400Regular',
     fontSize: 18,
-    marginBottom: 15, 
+    marginBottom: 15,
     textAlign: 'center',
   },
   entryButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    width: '100%', 
-    gap: 10, 
+    width: '100%',
+    gap: 10,
   },
-  entryButton: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff33', 
-    paddingVertical: 10,
-    paddingHorizontal: 10, 
-    borderRadius: 10,
-    height: 50, 
-    gap: 8, 
-  },
-  actionButton: { 
+  entryButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff55', 
+    backgroundColor: '#ffffff33',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    height: 50,
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff55',
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 10,
@@ -386,12 +507,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat_700Bold',
     fontSize: 16,
   },
-  chartContainer: { 
-    width: '90%', 
+  chartContainer: {
+    width: '90%',
     marginTop: 30,
-    alignItems: 'center', 
+    alignItems: 'center',
     paddingVertical: 15,
-    backgroundColor: '#FFFFFF', 
+    paddingHorizontal: 10, 
+    backgroundColor: '#FFFFFF',
     borderRadius: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -399,7 +521,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  chartTitle: { 
+  chartTitle: {
     fontSize: 18,
     color: '#3B5323',
     fontFamily: 'Montserrat_700Bold',
@@ -411,20 +533,86 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontFamily: 'Montserrat_400Regular',
-    paddingHorizontal: 10, // Para não tocar nas bordas do card
+    paddingHorizontal: 10,
+  },
+  filtersOuterContainer: { 
+    width: '100%',
+    alignItems: 'center', 
+    marginTop: 30,
+  },
+  filtersContainer: {
+    width: '90%', 
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 15, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    marginBottom: 20, 
+  },
+  filterSectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Montserrat_700Bold',
+    color: '#3B5323',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  filterLabel: {
+    fontSize: 15, 
+    fontFamily: 'Montserrat_700Bold', 
+    color: '#444', 
+    marginBottom: 8,
+    marginTop: 10, 
+  },
+  filterOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 5, 
+  },
+  filterButton: {
+    paddingVertical: 6, 
+    paddingHorizontal: 12, 
+    backgroundColor: '#E9E9E9', 
+    borderRadius: 15, 
+    marginRight: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#DDD', 
+  },
+  filterButtonActive: {
+    backgroundColor: '#3B5323',
+    borderColor: '#3B5323',
+  },
+  filterButtonTextBase: { 
+    fontFamily: 'Montserrat_400Regular',
+    fontSize: 14,
+  },
+  filterButtonTextActive: { 
+    color: '#FFFFFF',
+    fontWeight: 'bold', 
+  },
+  filterButtonTextInactive: { 
+    color: '#333333',
+  },
+  noCategoriesText: {
+    fontFamily: 'Montserrat_400Regular',
+    fontSize: 13,
+    color: '#777',
+    marginLeft: 5,
   },
   transactionsTitle: {
     fontSize: 20,
-    // fontWeight: 'bold', // Já incluso na fontFamily
     color: '#3B5323',
     marginBottom: 15,
-    marginTop: 30,
+    marginTop: 10, 
     fontFamily: 'Montserrat_700Bold',
-    textAlign: 'center', // Centraliza o texto
+    textAlign: 'center',
   },
   transactionItem: {
-    width: '90%', // Para os itens ocuparem 90% da largura e serem centralizados
-    alignSelf: 'center', // Garante a centralização do item na FlatList
+    width: '90%',
+    alignSelf: 'center',
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,
@@ -439,12 +627,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   transactionLeft: {
-    flex: 1, // Permite que a descrição cresça mas não empurre o valor para fora
-    marginRight: 10, // Espaço antes do valor
+    flex: 1,
+    marginRight: 10,
   },
   transactionDescription: {
     fontSize: 16,
-    // fontWeight: 'bold',
     color: '#333',
     fontFamily: 'Montserrat_700Bold',
     marginBottom: 2,
@@ -461,20 +648,19 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat_400Regular',
   },
   transactionAmount: {
-    fontSize: 17, // Levemente ajustado
-    // fontWeight: 'bold',
+    fontSize: 17,
     fontFamily: 'Montserrat_700Bold',
   },
   incomeAmount: {
-    color: '#28a745', // Verde para receita
+    color: '#28a745',
   },
   expenseAmount: {
-    color: '#dc3545', // Vermelho para despesa
+    color: '#dc3545',
   },
   noTransactionsText: {
     textAlign: 'center',
     marginTop: 20,
-    marginBottom: 20, // Adicionado para dar espaço
+    marginBottom: 20,
     fontSize: 16,
     color: '#666',
     fontFamily: 'Montserrat_400Regular',

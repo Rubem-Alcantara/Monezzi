@@ -1,17 +1,11 @@
-// src/screens/RegisterScreen.js
-
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { useNavigation } from '@react-navigation/native';
-
-// Importa a instância de autenticação do Firebase e do Firestore
-import { auth, db } from '../config/firebase'; // <--- Adicione 'db' aqui
-import { createUserWithEmailAndPassword } from 'firebase/auth'; // API modular Auth
-
-// Importa funções do Firestore para adicionar/manipular documentos
-import { doc, setDoc } from 'firebase/firestore'; // <--- Adicione 'doc' e 'setDoc' aqui
+import { auth, db } from '../config/firebase'; 
+import { createUserWithEmailAndPassword } from 'firebase/auth'; 
+import { doc, setDoc } from 'firebase/firestore'; 
 
 // Validações para registro
 const RegisterSchema = Yup.object().shape({
@@ -27,25 +21,21 @@ export default function RegisterScreen() {
   const handleRegister = async (values) => { 
     setLoading(true);
     try {
-      // 1. Tenta criar um novo usuário com e-mail e senha (Firebase Auth)
+      
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user; // O objeto de usuário autenticado
-
-      // 2. Salva os dados adicionais do usuário no Firestore
-      // Cria uma referência a um documento na coleção 'users' com o UID do usuário como ID do documento
+      const user = userCredential.user; 
       const userDocRef = doc(db, 'users', user.uid); 
       
-      // Define os dados do documento (name, email)
+      
       await setDoc(userDocRef, {
         name: values.name,
         email: values.email,
-        createdAt: new Date(), // Opcional: registrar a data de criação
+        createdAt: new Date(), 
       });
 
       console.log('Usuário registrado no Auth e dados salvos no Firestore com sucesso!', user.email);
       Alert.alert('Sucesso', `Bem-vindo, ${values.name}! Sua conta foi criada e configurada.`);
       
-      // A navegação automática para AppDrawer (via App.js) acontecerá se o registro for bem-sucedido
 
     } catch (error) {
       console.error('Erro de registro:', error.code, error.message);

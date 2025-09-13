@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "54229046520",
+    "project_id": "gestao-financeira-480f7",
+    "storage_bucket": "gestao-financeira-480f7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:54229046520:android:6b7490b1e9152e171fd70d",
+        "android_client_info": {
+          "package_name": "com.rubem_alcantara.meuprimeiroapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjEDCNuENEVh5Dgd1klrV5chVWJCIJdWU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

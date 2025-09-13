@@ -1,30 +1,67 @@
-// src/App.js
-
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
-
-// Importe a instância de autenticação do Firebase e onAuthStateChanged da API modular
-import { auth } from './src/config/firebase'; // <--- CORREÇÃO AQUI
-import { onAuthStateChanged } from 'firebase/auth'; // <--- CORREÇÃO AQUI
-
-// Telas principais (após login)
+import { auth } from './src/config/firebase'; 
+import { onAuthStateChanged } from 'firebase/auth'; 
+import * as Notifications from 'expo-notifications';
 import HomeStack from './src/navigation/HomeStack';
 import ProfileStack from './src/navigation/ProfileStack';
-import CustomDrawerContent from './src/components/customDrawerContent'; // Certifique-se de que o caminho está correto para o componente
-
-// Telas de autenticação
+import CustomDrawerContent from './src/components/customDrawerContent'; 
 import LoginScreen from './src/Screens/LoginScreen';
 import RegisterScreen from './src/Screens/RegisterScreen';
+import GoalsScreen from './src/Screens/GoalsScreen'; 
+import AddGoalScreen from './src/Screens/AddGoalScreen';
+import UpdateGoalScreen from './src/Screens/UpdateGoalScreen'; 
+import RemindersScreen from './src/Screens/ReminderScreen'; 
+import ForgotPasswordScreen from './src/Screens/ForgotPasswordScreen';
 
-// Navegadores
+
 const Drawer = createDrawerNavigator();
 const Stack = createStackNavigator();
 
-// Navegação do App principal (Drawer Navigator)
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false, 
+  }),
+});
+
+function GoalsStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen 
+        name="GoalsList" 
+        component={GoalsScreen} 
+        options={{ 
+          title: 'Minhas Metas',
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen 
+        name="AddGoal" 
+        component={AddGoalScreen} 
+        options={{ 
+          title: 'Adicionar Nova Meta', 
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen
+        name="UpdateGoalProgress" 
+        component={UpdateGoalScreen}
+        options={{
+          title: 'Editar Meta', 
+          headerShown: false 
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function AppDrawer() {
   return (
     <Drawer.Navigator
@@ -33,14 +70,15 @@ function AppDrawer() {
         headerShown: false,
         drawerActiveTintColor: '#3B5323',
         drawerInactiveTintColor: '#555',
+        drawerLabelStyle: { marginLeft: -20, fontFamily: 'Montserrat_400Regular' }, 
         drawerStyle: {
           backgroundColor: '#F5F5F0',
         },
       }}
     >
       <Drawer.Screen
-        name="Início"
-        component={HomeStack}
+        name="Início" 
+        component={HomeStack} 
         options={{
           drawerIcon: ({ color, size }) => (
             <MaterialIcons name="home" size={size} color={color} />
@@ -48,11 +86,29 @@ function AppDrawer() {
         }}
       />
       <Drawer.Screen
-        name="Perfil"
-        component={ProfileStack}
+        name="Perfil" 
+        component={ProfileStack} 
         options={{
           drawerIcon: ({ color, size }) => (
             <MaterialIcons name="person" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="Metas" 
+        component={GoalsStack}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <MaterialIcons name="flag" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="Lembretes" 
+        component={RemindersScreen}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <MaterialIcons name="alarm" size={size} color={color} /> 
           ),
         }}
       />
@@ -60,12 +116,12 @@ function AppDrawer() {
   );
 }
 
-// Navegação para Login e Registro (Stack Navigator para telas públicas)
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Registro" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -75,8 +131,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Usa onAuthStateChanged da API modular
-    const unsubscribe = onAuthStateChanged(auth, (authUser) => { // <--- CORREÇÃO AQUI
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => { 
       setUser(authUser);
       setLoading(false);
     });

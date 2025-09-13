@@ -1,19 +1,13 @@
-// src/navigation/AppStack.js
-
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
 
-// Pilhas de navegação internas (cada uma com um Stack Navigator próprio)
 import HomeStack from './HomeStack';
 import ProfileStack from './ProfileStack';
-
-// Drawer customizado com avatar e botão de logout
-import CustomDrawerContent from '../customDrawerContent';
+import CustomDrawerContent from '../components/customDrawerContent';
 
 const Drawer = createDrawerNavigator();
 
-// Stack com o Drawer principal do app, visível apenas após login
 export default function AppStack() {
   return (
     <Drawer.Navigator
@@ -24,6 +18,19 @@ export default function AppStack() {
         drawerInactiveTintColor: '#555',
         drawerStyle: {
           backgroundColor: '#F5F5F0',
+        },
+        drawerItemStyle: { 
+          marginVertical: 4, 
+          marginHorizontal: 10, 
+          borderRadius: 12, 
+        },
+        drawerLabelStyle: {
+          marginLeft: -10,
+          fontSize: 16,
+        },
+        drawerIconStyle: { 
+          marginLeft: 10,
+          marginRight: 5,
         },
       }}
     >

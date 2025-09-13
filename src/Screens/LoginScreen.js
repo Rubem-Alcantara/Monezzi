@@ -1,16 +1,12 @@
-// src/screens/LoginScreen.js
-
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { useNavigation } from '@react-navigation/native';
+import { auth } from '../config/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth'; 
 
-import { auth } from '../config/firebase'; // Importa a instância de autenticação do Firebase
-// Importa a função signInWithEmailAndPassword da API modular
-import { signInWithEmailAndPassword } from 'firebase/auth'; // <--- CORREÇÃO AQUI
 
-// Definindo as regras de validação com Yup
 const LoginSchema = Yup.object().shape({
   email: Yup.string().email('E-mail inválido').required('Campo obrigatório'),
   password: Yup.string().min(6, 'Mínimo 6 caracteres').required('Campo obrigatório'),
@@ -23,8 +19,8 @@ export default function LoginScreen() {
   const handleLogin = async (values) => { 
     setLoading(true);
     try {
-      // Usa a função signInWithEmailAndPassword da API modular
-      await signInWithEmailAndPassword(auth, values.email, values.password); // <--- CORREÇÃO AQUI
+      
+      await signInWithEmailAndPassword(auth, values.email, values.password);
       
       console.log('Login realizado com sucesso!');
 
@@ -35,7 +31,7 @@ export default function LoginScreen() {
         errorMessage = 'E-mail inválido.';
       } else if (error.code === 'auth/user-disabled') {
         errorMessage = 'Usuário desativado.';
-      } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+      } else if (error.code === 'auth/invalid-credential') { 
         errorMessage = 'E-mail ou senha inválidos.';
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage = 'Muitas tentativas de login. Tente novamente mais tarde.';
@@ -93,6 +89,14 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
+              style={styles.forgotPasswordButton} 
+              onPress={() => navigation.navigate('ForgotPassword')}
+              disabled={loading}
+            >
+              <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
               onPress={() => navigation.navigate('Registro')}
               disabled={loading}
             >
@@ -111,16 +115,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     padding: 20, 
     backgroundColor: '#f7f7f7' 
-},
-
+  },
   title: { 
     fontSize: 26, 
     fontWeight: 'bold', 
     marginBottom: 30, 
     textAlign: 'center', 
     color: '#3B5323' 
-},
-
+  },
   input: { 
     backgroundColor: '#fff', 
     borderRadius: 10, 
@@ -128,29 +130,35 @@ const styles = StyleSheet.create({
     marginBottom: 10, 
     borderColor: '#ccc', 
     borderWidth: 1 
-},
-
+  },
   button: { 
     backgroundColor: '#3B5323', 
     padding: 15, 
     borderRadius: 10, 
-    alignItems: 'center' 
-},
-
+    alignItems: 'center',
+    marginTop: 10,
+  },
   buttonText: { 
     color: 'white', 
     fontWeight: 'bold' 
-},
-
+  },
   linkText: { 
     marginTop: 20, 
     color: '#3B5323', 
     textAlign: 'center' 
-},
-
+  },
   error: { 
     color: 'red', 
     fontSize: 12, 
     marginBottom: 5 
-},
+  },
+  forgotPasswordButton: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    color: '#3B5323',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
 });

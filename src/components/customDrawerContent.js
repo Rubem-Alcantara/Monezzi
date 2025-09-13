@@ -2,11 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
-
-// NOVO CAMINHO AQUI: Agora que está em src/components/
-import { auth } from '../config/firebase'; // <--- Caminho corrigido!
-
-// ... (restante do código, que permanece o mesmo) ...
+import { auth } from '../config/firebase'; 
 
 export default function CustomDrawerContent(props) {
 

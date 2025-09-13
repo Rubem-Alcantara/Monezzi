@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,52 +7,117 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Formik } from 'formik'; // Formik para gerenciamento de formulário
-import * as Yup from 'yup'; // Yup para validação de campos
+import { Formik } from 'formik';
+import * as Yup from 'yup';
+import { auth, db } from '../config/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile, updateEmail } from 'firebase/auth';
 
-// Esquema de validação usando Yup
+
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Informe o nome'),
-  email: Yup.string()
-    .email('E-mail inválido')
-    .required('Informe o e-mail'),
+ 
 });
 
 export default function EditProfileScreen() {
-  const navigation = useNavigation(); // Navegação para voltar
+  const navigation = useNavigation();
+  const [currentUser, setCurrentUser] = useState(null);
+  const [initialFormValues, setInitialFormValues] = useState({ name: '', email: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Função chamada ao submeter o formulário
-  const handleSave = (values) => {
-    // Aqui você irá implementar a lógica com Firebase futuramente
-    Alert.alert('Perfil Atualizado', `Nome: ${values.name}\nE-mail: ${values.email}`);
-    navigation.goBack();
+  // Carregar dados do usuário ao montar a tela
+  useEffect(() => {
+    const loadUserData = async () => {
+      setLoading(true);
+      const user = auth.currentUser;
+      if (user) {
+        setCurrentUser(user);
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let firestoreName = user.displayName || '';
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          firestoreName = userData.name || firestoreName;
+        }
+        
+        setInitialFormValues({
+          name: firestoreName,
+          email: user.email || '', 
+        });
+
+      } else {
+        Alert.alert("Erro", "Usuário não encontrado. Faça login novamente.");
+        navigation.goBack();
+      }
+      setLoading(false);
+    };
+    loadUserData();
+  }, []);
+
+  // Função chamada ao enviar o formulário
+  const handleSave = async (values) => {
+    if (!currentUser) return;
+    setSaving(true);
+
+    try {
+      // Atualizar displayName no Firebase Auth
+      if (values.name !== currentUser.displayName) {
+        await updateProfile(currentUser, {
+          displayName: values.name,
+        });
+      }
+
+      // Atualizar 'name' no Firestore
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userDocRef, {
+        name: values.name,
+      });
+      
+
+      Alert.alert('Perfil Atualizado', 'Suas informações foram salvas com sucesso!');
+      navigation.goBack();
+
+    } catch (error) {
+      console.error("Erro ao salvar perfil:", error);
+      Alert.alert('Erro', 'Não foi possível salvar as alterações.');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#3B5323" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <LinearGradient colors={['#3B5323', '#A9BA9D']} style={styles.gradient}>
+      <LinearGradient colors={['#3B5323', '#A9BA9D']} style={styles.gradientHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color="white" />
         </TouchableOpacity>
         <Text style={styles.title}>Editar Perfil</Text>
       </LinearGradient>
 
-      {/* Formulário com Formik */}
       <Formik
-        initialValues={{
-          name: 'Usuário', // valor inicial que futuramente virá do Firebase
-          email: 'usuario@usuario.com',
-        }}
+        initialValues={initialFormValues}
         validationSchema={validationSchema}
         onSubmit={handleSave}
+        enableReinitialize 
       >
         {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
           <View style={styles.form}>
@@ -69,24 +134,27 @@ export default function EditProfileScreen() {
               <Text style={styles.errorText}>{errors.name}</Text>
             )}
 
-            {/* Campo E-mail */}
+            {/* Campo E-mail (Somente Leitura) */}
             <Text style={styles.label}>E-mail</Text>
             <TextInput
-              style={styles.input}
-              placeholder="E-mail"
-              onChangeText={handleChange('email')}
-              onBlur={handleBlur('email')}
+              style={[styles.input, styles.inputDisabled]}
               value={values.email}
+              editable={false}
               keyboardType="email-address"
               autoCapitalize="none"
             />
-            {touched.email && errors.email && (
-              <Text style={styles.errorText}>{errors.email}</Text>
-            )}
-
+            
             {/* Botão Salvar */}
-            <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-              <Text style={styles.buttonText}>Salvar</Text>
+            <TouchableOpacity 
+                style={[styles.button, saving && styles.buttonDisabled]} 
+                onPress={handleSubmit}
+                disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.buttonText}>Salvar</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -100,45 +168,59 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f7f7',
   },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gradientHeader: {
+    paddingTop: Platform.OS === 'android' ? 40 : 50,
+    paddingBottom: 25,
+    paddingHorizontal: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    position: 'relative',
+  },
   backButton: {
     position: 'absolute',
     left: 15,
-    top: 50,
+    top: Platform.OS === 'android' ? 45 : 55,
     padding: 5,
     zIndex: 10,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: 'white',
-  },
-  gradient: {
-    paddingTop: 50,
-    paddingBottom: 15,
-    paddingHorizontal: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomLeftRadius: 50,
-    borderBottomRightRadius: 50,
-    position: 'relative',
+    fontFamily: 'Montserrat_700Bold',
   },
   form: {
-    padding: 20,
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    marginTop: 20, 
   },
   label: {
     fontSize: 16,
     color: '#3B5323',
-    marginTop: 20,
-    marginBottom: 5,
+    marginTop: 15,
+    marginBottom: 8,
+    fontFamily: 'Montserrat_400Regular',
   },
   input: {
     backgroundColor: 'white',
     borderRadius: 10,
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
     fontSize: 16,
-    borderColor: '#3B5323',
+    borderColor: '#CCC',
     borderWidth: 1,
+    color: '#333',
+  },
+  inputDisabled: {
+    backgroundColor: '#f0f0f0',
+    color: '#888',
   },
   errorText: {
     color: 'red',
@@ -147,14 +229,18 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#3B5323',
-    marginTop: 40,
+    marginTop: 30,
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    backgroundColor: '#A9BA9D',
   },
   buttonText: {
     color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
+    fontFamily: 'Montserrat_700Bold', 
   },
 });
